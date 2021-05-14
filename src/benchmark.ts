@@ -1,7 +1,12 @@
 import { IOptions } from "./options.interface";
 import { RedisClient } from "redis";
 import { promisify } from "util";
-import { Compression, IBenchmarkResult } from "./benchmark-result.interface";
+import {
+  Compression,
+  IAggregatedResult,
+  IBenchmarkResult,
+  IRawBenchmarkResult,
+} from "./benchmark-result.interface";
 import { measure } from "./measure";
 import {
   brotliCompress,
@@ -11,6 +16,7 @@ import {
   gzip,
   inflate,
 } from "zlib";
+import { shuffle } from "./shuffle";
 
 const brotliCompressAsync = promisify(brotliCompress);
 const deflateAsync = promisify(deflate);
@@ -52,6 +58,39 @@ function getDecompressAsync(
   }
 }
 
+function aggregate(values: number[]): IAggregatedResult {
+  if (!values.length) {
+    return {
+      mean: Number.NaN,
+      standardDeviation: Number.NaN,
+      confidence95: Number.NaN,
+    };
+  }
+
+  const mean = values.reduce((a, b) => a + b, 0);
+  const standardDeviation = Math.sqrt(
+    values.map((value) => Math.pow(value - mean, 2)).reduce((a, b) => a + b, 0)
+  );
+
+  return {
+    mean,
+    standardDeviation,
+    confidence95: 1.96 * standardDeviation,
+  };
+}
+
+function aggregateResults(results: IRawBenchmarkResult[]): IBenchmarkResult {
+  return {
+    key: results[0].key,
+    compression: results[0].compression,
+    dataSavingPercentage: results[0].dataSavingPercentage,
+    documentSizeWithCompression: results[0].documentSizeWithCompression,
+    rawDocumentSize: results[0].rawDocumentSize,
+    downloadTimeMs: aggregate(results.map((result) => result.downloadTimeMs)),
+    uploadTimeMs: aggregate(results.map((result) => result.uploadTimeMs)),
+  };
+}
+
 export class Benchmark {
   private readonly redisStringKeyAsync: (pattern: string) => Promise<string[]>;
   private readonly redisStringGetAsync: (key: string) => Promise<string | null>;
@@ -68,6 +107,7 @@ export class Benchmark {
     mode: string,
     duration: number
   ) => Promise<unknown>;
+  private readonly rawContentCache = new Map<string, string>();
 
   constructor(
     private readonly redisClientBuffer: RedisClient,
@@ -91,54 +131,97 @@ export class Benchmark {
   }
 
   async run(options: IOptions): Promise<IBenchmarkResult[]> {
+    const { results, keys } = await this.measure(options);
+
+    const aggregatedResults = keys
+      .map((key) =>
+        Object.values(Compression).map((compression) =>
+          aggregateResults(
+            results.filter(
+              (result) =>
+                result.key === key && result.compression === compression
+            )
+          )
+        )
+      )
+      .flat();
+
+    return aggregatedResults;
+  }
+
+  private async measure(
+    options: IOptions
+  ): Promise<{ results: IRawBenchmarkResult[]; keys: string[] }> {
     const allKeys = await this.redisStringKeyAsync(options.redisKeyPattern);
 
     const benchMarks = [];
 
+    const runs = new Array(options.runs).fill(undefined);
+
     console.info(`Found ${allKeys.length} keys matching the pattern`);
 
-    for (let i = 0; i < allKeys.length; i++) {
-      const results = await this.runForKey(allKeys[i]);
-      benchMarks.push(...results);
+    const selectedKeys = shuffle(allKeys).slice(0, options.limit);
+
+    console.info(
+      `Running ${options.runs} runs on ${selectedKeys.length} keys and all algorithm`
+    );
+
+    const runDefinitions: Array<{ compression: Compression; key: string }> =
+      shuffle(
+        selectedKeys
+          .map((key) =>
+            Object.values(Compression)
+              .map((compression) =>
+                runs.map(() => ({
+                  compression,
+                  key,
+                }))
+              )
+              .flat()
+          )
+          .flat()
+          .map(({ compression, key }) => ({ compression, key }))
+      );
+
+    for (let i = 0; i < runDefinitions.length; i++) {
+      console.info(`Running measure ${i + 1}/${runDefinitions.length}`);
+
+      const definition = runDefinitions[i];
+      const rawContent = await this.getRawContent(definition.key);
+
+      const result = await this.runForKeyAndCompression(
+        definition.key,
+        definition.compression,
+        rawContent
+      );
+      benchMarks.push(result);
     }
 
-    return benchMarks;
+    return { results: benchMarks, keys: selectedKeys };
   }
 
-  private async runForKey(key: string): Promise<IBenchmarkResult[]> {
-    const compressions = Object.values(Compression);
-    const results = [];
-
-    for (let i = 0; i < compressions.length; i++) {
-      const rawResult = await this.redisStringGetAsync(key);
-
-      if (rawResult) {
-        const { rawUploadTimeMs } = await this.setRawValue(rawResult);
-        const { rawDownloadTimeMs } = await this.getRawValue();
-
-        const result = await this.runForKeyAndCompression(
-          key,
-          compressions[i],
-          rawResult,
-          {
-            rawUploadTimeMs,
-            rawDownloadTimeMs,
-          }
-        );
-        console.log(result);
-        results.push(result);
-      }
+  private async getRawContent(key: string): Promise<string> {
+    if (this.rawContentCache.has(key)) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return this.rawContentCache.get(key)!;
     }
 
-    return results;
+    const rawResult = await this.redisStringGetAsync(key);
+
+    if (rawResult === null) {
+      throw new Error(`Key not found ${key}`);
+    }
+
+    this.rawContentCache.set(key, rawResult);
+
+    return rawResult;
   }
 
   private async runForKeyAndCompression(
     key: string,
     compression: Compression,
-    rawContent: string,
-    rawResults: { rawUploadTimeMs: number; rawDownloadTimeMs: number }
-  ): Promise<IBenchmarkResult> {
+    rawContent: string
+  ): Promise<IRawBenchmarkResult> {
     const rawDocumentSize = Buffer.from(rawContent).length;
     const { uploadTimeMs, documentSize } = await this.setValue(
       rawContent,
@@ -157,17 +240,12 @@ export class Benchmark {
 
     return {
       key,
-      ...rawResults,
       rawDocumentSize,
       documentSizeWithCompression: documentSize,
       compression,
       uploadTimeMs,
       downloadTimeMs,
       dataSavingPercentage: 100 * (1 - documentSize / rawDocumentSize),
-      downloadTimeSavingPercentage:
-        100 * (1 - downloadTimeMs / rawResults.rawDownloadTimeMs),
-      uploadTimeSavingPercentage:
-        100 * (1 - uploadTimeMs / rawResults.rawUploadTimeMs),
     };
   }
 
@@ -175,6 +253,9 @@ export class Benchmark {
     rawContent: string,
     compression: Compression
   ): Promise<{ uploadTimeMs: number; documentSize: number }> {
+    if (compression === Compression.none) {
+      return this.setRawValue(rawContent);
+    }
     const compressAsync = getCompressAsync(compression);
 
     const [documentSize, uploadTimeMs] = await measure(async () => {
@@ -188,16 +269,21 @@ export class Benchmark {
 
   private async setRawValue(
     rawContent: string
-  ): Promise<{ rawUploadTimeMs: number }> {
-    const [, rawUploadTimeMs] = await measure(async () => {
+  ): Promise<{ uploadTimeMs: number; documentSize: number }> {
+    const documentSize = Buffer.from(rawContent, "utf-8").length;
+
+    const [, uploadTimeMs] = await measure(async () => {
       await this.redisStringSetAsync(REDIS_KEY, rawContent, "PX", EXPIRY_MS);
     });
-    return { rawUploadTimeMs };
+    return { uploadTimeMs, documentSize };
   }
 
   private async getValue(
     compression: Compression
   ): Promise<{ downloadTimeMs: number; extractedDocument: string | null }> {
+    if (compression === Compression.none) {
+      return this.getRawValue();
+    }
     const decompressAsync = getDecompressAsync(compression);
 
     const [extractedDocument, downloadTimeMs] = await measure(async () => {
@@ -212,11 +298,14 @@ export class Benchmark {
     return { extractedDocument, downloadTimeMs };
   }
 
-  private async getRawValue(): Promise<{ rawDownloadTimeMs: number }> {
-    const [, rawDownloadTimeMs] = await measure(async () => {
+  private async getRawValue(): Promise<{
+    downloadTimeMs: number;
+    extractedDocument: string | null;
+  }> {
+    const [extractedDocument, downloadTimeMs] = await measure(async () => {
       return this.redisStringGetAsync(REDIS_KEY);
     });
 
-    return { rawDownloadTimeMs };
+    return { downloadTimeMs, extractedDocument };
   }
 }
