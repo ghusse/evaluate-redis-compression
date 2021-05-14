@@ -21,8 +21,10 @@
   },
   "homepage": "https://github.com/ghusse/evaluate-redis-compression#readme",
   "dependencies": {
+    "@types/node": "^15.0.3",
+    "@types/redis": "^2.8.28",
     "commander": "^7.2.0",
-    "redis": "^3.1.2",
+    "redis": "^3.0.0",
     "ts-node": "^9.1.1",
     "typescript": "^4.2.4"
   },
