@@ -21,12 +21,18 @@ export interface IAggregatedResult {
   confidence95: number;
 }
 
-export interface IBenchmarkResult {
-  key: string;
-  rawDocumentSize: number;
-  compression: Compression;
+export interface IBenchmarkResultForCompression {
   documentSizeWithCompression: number;
   dataSavingPercentage: number;
   uploadTimeMs: IAggregatedResult;
   downloadTimeMs: IAggregatedResult;
+}
+
+export interface IBenchmarkResult {
+  key: string;
+  rawDocumentSize: number;
+  [Compression.brotli]: IBenchmarkResultForCompression;
+  [Compression.none]: IBenchmarkResultForCompression;
+  [Compression.gzip]: IBenchmarkResultForCompression;
+  [Compression.deflate]: IBenchmarkResultForCompression;
 }

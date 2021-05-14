@@ -1,7 +1,7 @@
 import stringify from "csv-stringify";
 import { writeFile } from "fs";
 import { promisify } from "util";
-import { IBenchmarkResult } from "./benchmark-result.interface";
+import { Compression, IBenchmarkResult } from "./benchmark-result.interface";
 import { IOptions } from "./options.interface";
 
 const stringifyAsync = promisify(stringify) as (
@@ -15,19 +15,29 @@ export async function write(
   benchmarks: IBenchmarkResult[],
   options: IOptions
 ): Promise<void> {
-  const lines = benchmarks.map((b) => ({
-    key: b.key,
-    rawDocumentSize: b.rawDocumentSize,
-    compression: b.compression,
-    documentSizeWithCompression: b.documentSizeWithCompression,
-    dataSavingPercentage: b.dataSavingPercentage,
-    uploadTimeMs: b.uploadTimeMs.mean,
-    uploadTimeMsStandardDev: b.uploadTimeMs.standardDeviation,
-    uploadTimeMsConfidence95: b.uploadTimeMs.confidence95,
-    downloadTimeMs: b.downloadTimeMs.mean,
-    downloadTimeMsStandardDev: b.downloadTimeMs.standardDeviation,
-    downloadTimeMsConfidence95: b.downloadTimeMs.confidence95,
-  }));
+  const lines = benchmarks.map((b) => {
+    const compressionResults = Object.values(Compression)
+      .map((compression) => ({
+        [`${compression}DocSize`]: b[compression].documentSizeWithCompression,
+        [`${compression}SizeSaving`]: b[compression].dataSavingPercentage,
+        [`${compression}UploadMean`]: b[compression].uploadTimeMs.mean,
+        [`${compression}UploadStd`]:
+          b[compression].uploadTimeMs.standardDeviation,
+        [`${compression}Upload95`]: b[compression].uploadTimeMs.confidence95,
+        [`${compression}DownloadMean`]: b[compression].downloadTimeMs.mean,
+        [`${compression}DownloadStd`]:
+          b[compression].downloadTimeMs.standardDeviation,
+        [`${compression}Download95`]:
+          b[compression].downloadTimeMs.confidence95,
+      }))
+      .reduce((accumulator, value) => ({ ...accumulator, ...value }), {});
+
+    return {
+      key: b.key,
+      rawDocumentSize: b.rawDocumentSize,
+      ...compressionResults,
+    };
+  });
   const csv = await stringifyAsync(lines, {
     header: true,
   });

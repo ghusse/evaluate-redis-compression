@@ -5,6 +5,7 @@ import {
   Compression,
   IAggregatedResult,
   IBenchmarkResult,
+  IBenchmarkResultForCompression,
   IRawBenchmarkResult,
 } from "./benchmark-result.interface";
 import { measure } from "./measure";
@@ -79,15 +80,33 @@ function aggregate(values: number[]): IAggregatedResult {
   };
 }
 
+function aggregateForCompression(
+  results: IRawBenchmarkResult[]
+): IBenchmarkResultForCompression {
+  return {
+    dataSavingPercentage: results[0].dataSavingPercentage,
+    documentSizeWithCompression: results[0].documentSizeWithCompression,
+    downloadTimeMs: aggregate(results.map((result) => result.downloadTimeMs)),
+    uploadTimeMs: aggregate(results.map((result) => result.uploadTimeMs)),
+  };
+}
+
 function aggregateResults(results: IRawBenchmarkResult[]): IBenchmarkResult {
   return {
     key: results[0].key,
-    compression: results[0].compression,
-    dataSavingPercentage: results[0].dataSavingPercentage,
-    documentSizeWithCompression: results[0].documentSizeWithCompression,
     rawDocumentSize: results[0].rawDocumentSize,
-    downloadTimeMs: aggregate(results.map((result) => result.downloadTimeMs)),
-    uploadTimeMs: aggregate(results.map((result) => result.uploadTimeMs)),
+    [Compression.brotli]: aggregateForCompression(
+      results.filter((result) => result.compression === Compression.brotli)
+    ),
+    [Compression.gzip]: aggregateForCompression(
+      results.filter((result) => result.compression === Compression.gzip)
+    ),
+    [Compression.deflate]: aggregateForCompression(
+      results.filter((result) => result.compression === Compression.deflate)
+    ),
+    [Compression.none]: aggregateForCompression(
+      results.filter((result) => result.compression === Compression.none)
+    ),
   };
 }
 
@@ -133,18 +152,9 @@ export class Benchmark {
   async run(options: IOptions): Promise<IBenchmarkResult[]> {
     const { results, keys } = await this.measure(options);
 
-    const aggregatedResults = keys
-      .map((key) =>
-        Object.values(Compression).map((compression) =>
-          aggregateResults(
-            results.filter(
-              (result) =>
-                result.key === key && result.compression === compression
-            )
-          )
-        )
-      )
-      .flat();
+    const aggregatedResults = keys.map((key) =>
+      aggregateResults(results.filter((result) => result.key === key))
+    );
 
     return aggregatedResults;
   }
