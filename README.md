@@ -13,6 +13,9 @@ npm link
 
 ```bash
 evaluate-redis-compression \
-  --redisUrl="redis://u:p@server:123/db"
-  --redisKeyPattern="/key-prefix/*"
+  --redisUrl="redis://u:p@server:123/db" \
+  --redisKeyPattern="/key-prefix/*" \
+  --limit 1000 \
+  --runs 20 \
+  --out result.csv
 ```

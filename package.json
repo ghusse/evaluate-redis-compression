@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "lint": "eslint 'src/**/*.{js,ts}'"
+    "lint": "eslint 'src/**/*.{js,ts}'",
+    "plot": "gnuplot -e \"filename='result.csv'\" -e \"write='true'\" benchmark.plot"
   },
   "bin": {
     "evaluate-redis-compression": "./src/index.ts"

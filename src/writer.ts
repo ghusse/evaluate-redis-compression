@@ -20,15 +20,40 @@ export async function write(
       .map((compression) => ({
         [`${compression}DocSize`]: b[compression].documentSizeWithCompression,
         [`${compression}SizeSaving`]: b[compression].dataSavingPercentage,
+        [`${compression}CompressionMean`]:
+          b[compression].compressionTimeMs.mean,
+        [`${compression}CompressionStd`]:
+          b[compression].compressionTimeMs.standardDeviation,
+        [`${compression}Compression95`]:
+          b[compression].uploadTimeMs.confidence95,
         [`${compression}UploadMean`]: b[compression].uploadTimeMs.mean,
         [`${compression}UploadStd`]:
           b[compression].uploadTimeMs.standardDeviation,
         [`${compression}Upload95`]: b[compression].uploadTimeMs.confidence95,
+        [`${compression}TotalSetValueMean`]:
+          b[compression].totalSetValueTimeMs.mean,
+        [`${compression}TotalSetValueStd`]:
+          b[compression].totalSetValueTimeMs.standardDeviation,
+        [`${compression}TotalSetValue95`]:
+          b[compression].totalSetValueTimeMs.confidence95,
+
+        [`${compression}DecompressionMean`]:
+          b[compression].decompressionTimeMs.mean,
+        [`${compression}DecompressionStd`]:
+          b[compression].decompressionTimeMs.standardDeviation,
+        [`${compression}Decompression95`]:
+          b[compression].decompressionTimeMs.confidence95,
         [`${compression}DownloadMean`]: b[compression].downloadTimeMs.mean,
         [`${compression}DownloadStd`]:
           b[compression].downloadTimeMs.standardDeviation,
         [`${compression}Download95`]:
           b[compression].downloadTimeMs.confidence95,
+        [`${compression}TotalGetValueMean`]:
+          b[compression].totalGetValueTimeMs.mean,
+        [`${compression}TotalGetValueStd`]:
+          b[compression].totalGetValueTimeMs.standardDeviation,
+        [`${compression}TotalGetValue95`]:
+          b[compression].totalGetValueTimeMs.confidence95,
       }))
       .reduce((accumulator, value) => ({ ...accumulator, ...value }), {});
 

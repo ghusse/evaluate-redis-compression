@@ -16,15 +16,25 @@ import {
   gunzip,
   gzip,
   inflate,
+  constants,
 } from "zlib";
 import { shuffle } from "./shuffle";
 
-const brotliCompressAsync = promisify(brotliCompress);
+const internalBrotliCompressAsync = promisify(brotliCompress);
 const deflateAsync = promisify(deflate);
 const gzipAsync = promisify(gzip);
 const brotliDecompressAsync = promisify(brotliDecompress);
 const inflateAsync = promisify(inflate);
 const gunzipAsync = promisify(gunzip);
+
+function brotliCompressAsync(value: string): Promise<Buffer> {
+  return internalBrotliCompressAsync(value, {
+    params: {
+      // The default quality is the max quality, which is not fair for this algorithm
+      [constants.BROTLI_PARAM_QUALITY]: 5,
+    },
+  });
+}
 
 const REDIS_KEY = "evaluate-redis-compression";
 const EXPIRY_MS = 60_000;
@@ -68,9 +78,11 @@ function aggregate(values: number[]): IAggregatedResult {
     };
   }
 
-  const mean = values.reduce((a, b) => a + b, 0);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const standardDeviation = Math.sqrt(
-    values.map((value) => Math.pow(value - mean, 2)).reduce((a, b) => a + b, 0)
+    values
+      .map((value) => Math.pow(value - mean, 2))
+      .reduce((a, b) => a + b, 0) / values.length
   );
 
   return {
@@ -88,6 +100,20 @@ function aggregateForCompression(
     documentSizeWithCompression: results[0].documentSizeWithCompression,
     downloadTimeMs: aggregate(results.map((result) => result.downloadTimeMs)),
     uploadTimeMs: aggregate(results.map((result) => result.uploadTimeMs)),
+    compressionTimeMs: aggregate(
+      results.map((result) => result.compressionTimeMs)
+    ),
+    decompressionTimeMs: aggregate(
+      results.map((result) => result.decompressionTimeMs)
+    ),
+    totalSetValueTimeMs: aggregate(
+      results.map((result) => result.uploadTimeMs + result.compressionTimeMs)
+    ),
+    totalGetValueTimeMs: aggregate(
+      results.map(
+        (result) => result.downloadTimeMs + result.decompressionTimeMs
+      )
+    ),
   };
 }
 
@@ -226,21 +252,17 @@ export class Benchmark {
 
     return rawResult;
   }
-
   private async runForKeyAndCompression(
     key: string,
     compression: Compression,
     rawContent: string
   ): Promise<IRawBenchmarkResult> {
     const rawDocumentSize = Buffer.from(rawContent).length;
-    const { uploadTimeMs, documentSize } = await this.setValue(
-      rawContent,
-      compression
-    );
+    const { uploadTimeMs, documentSize, compressionTimeMs } =
+      await this.setValue(rawContent, compression);
 
-    const { downloadTimeMs, extractedDocument } = await this.getValue(
-      compression
-    );
+    const { downloadTimeMs, extractedDocument, decompressionTimeMs } =
+      await this.getValue(compression);
 
     if (extractedDocument !== rawContent) {
       throw new Error(
@@ -255,6 +277,8 @@ export class Benchmark {
       compression,
       uploadTimeMs,
       downloadTimeMs,
+      compressionTimeMs,
+      decompressionTimeMs,
       dataSavingPercentage: 100 * (1 - documentSize / rawDocumentSize),
     };
   }
@@ -262,42 +286,55 @@ export class Benchmark {
   private async setValue(
     rawContent: string,
     compression: Compression
-  ): Promise<{ uploadTimeMs: number; documentSize: number }> {
+  ): Promise<{
+    uploadTimeMs: number;
+    documentSize: number;
+    compressionTimeMs: number;
+  }> {
     if (compression === Compression.none) {
       return this.setRawValue(rawContent);
     }
     const compressAsync = getCompressAsync(compression);
 
-    const [documentSize, uploadTimeMs] = await measure(async () => {
-      const compressed = await compressAsync(rawContent);
-      await this.redisBufferSetAsync(REDIS_KEY, compressed, "PX", EXPIRY_MS);
-
-      return compressed.length;
+    const [compressed, compressionTimeMs] = await measure(async () => {
+      return await compressAsync(rawContent);
     });
-    return { uploadTimeMs, documentSize };
+
+    const [, uploadTimeMs] = await measure(async () => {
+      await this.redisBufferSetAsync(REDIS_KEY, compressed, "PX", EXPIRY_MS);
+    });
+
+    return { uploadTimeMs, documentSize: compressed.length, compressionTimeMs };
   }
 
-  private async setRawValue(
-    rawContent: string
-  ): Promise<{ uploadTimeMs: number; documentSize: number }> {
+  private async setRawValue(rawContent: string): Promise<{
+    uploadTimeMs: number;
+    documentSize: number;
+    compressionTimeMs: number;
+  }> {
     const documentSize = Buffer.from(rawContent, "utf-8").length;
 
     const [, uploadTimeMs] = await measure(async () => {
       await this.redisStringSetAsync(REDIS_KEY, rawContent, "PX", EXPIRY_MS);
     });
-    return { uploadTimeMs, documentSize };
+    return { uploadTimeMs, documentSize, compressionTimeMs: 0 };
   }
 
-  private async getValue(
-    compression: Compression
-  ): Promise<{ downloadTimeMs: number; extractedDocument: string | null }> {
+  private async getValue(compression: Compression): Promise<{
+    downloadTimeMs: number;
+    extractedDocument: string | null;
+    decompressionTimeMs: number;
+  }> {
     if (compression === Compression.none) {
       return this.getRawValue();
     }
     const decompressAsync = getDecompressAsync(compression);
 
+    const [compressed, decompressionTimeMs] = await measure(async () => {
+      return this.redisBufferGetAsync(REDIS_KEY);
+    });
+
     const [extractedDocument, downloadTimeMs] = await measure(async () => {
-      const compressed = await this.redisBufferGetAsync(REDIS_KEY);
       const extractedDocument = compressed
         ? (await decompressAsync(compressed)).toString("utf-8")
         : null;
@@ -305,17 +342,18 @@ export class Benchmark {
       return extractedDocument;
     });
 
-    return { extractedDocument, downloadTimeMs };
+    return { extractedDocument, downloadTimeMs, decompressionTimeMs };
   }
 
   private async getRawValue(): Promise<{
     downloadTimeMs: number;
     extractedDocument: string | null;
+    decompressionTimeMs: number;
   }> {
     const [extractedDocument, downloadTimeMs] = await measure(async () => {
       return this.redisStringGetAsync(REDIS_KEY);
     });
 
-    return { downloadTimeMs, extractedDocument };
+    return { downloadTimeMs, extractedDocument, decompressionTimeMs: 0 };
   }
 }

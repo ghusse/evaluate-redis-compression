@@ -13,6 +13,8 @@ export interface IRawBenchmarkResult {
   dataSavingPercentage: number;
   uploadTimeMs: number;
   downloadTimeMs: number;
+  compressionTimeMs: number;
+  decompressionTimeMs: number;
 }
 
 export interface IAggregatedResult {
@@ -26,6 +28,10 @@ export interface IBenchmarkResultForCompression {
   dataSavingPercentage: number;
   uploadTimeMs: IAggregatedResult;
   downloadTimeMs: IAggregatedResult;
+  compressionTimeMs: IAggregatedResult;
+  decompressionTimeMs: IAggregatedResult;
+  totalSetValueTimeMs: IAggregatedResult;
+  totalGetValueTimeMs: IAggregatedResult;
 }
 
 export interface IBenchmarkResult {
