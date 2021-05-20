@@ -17,10 +17,10 @@ set datafile separator ','
 set title "Compression + upload duration"
 set ylabel "Duration"
 set key outside
-plot filename using 2:($11/1000):($13/1000) with errorbars title 'Brotli', \
-  '' using 2:($31/1000):($33/1000) with errorbars title 'Gzip', \
-  '' using 2:($51/1000):($53/1000) with errorbars title 'Deflate', \
-  '' using 2:($71/1000):($73/1000) with errorbars title 'No compression'
+plot filename using 2:(column("brotliTotalSetValueMean")/1000):(column("brotliTotalSetValue95")/1000) with errorbars title 'Brotli', \
+  '' using 2:(column("gzipTotalSetValueMean")/1000):(column("gzipTotalSetValue95")/1000) with errorbars title 'Gzip', \
+  '' using 2:(column("deflateTotalSetValueMean")/1000):(column("deflateTotalSetValue95")/1000) with errorbars title 'Deflate', \
+  '' using 2:(column("noneTotalSetValueMean")/1000):(column("noneTotalSetValue95")/1000) with errorbars title 'No compression'
 
 # DOWNLOAD
 
@@ -30,10 +30,10 @@ if (exists("write")){
 }
 set title "Download + decompression duration"
 set ylabel "Duration"
-plot filename using 2:($20/1000):($22/1000) with errorbars title 'Brotli', \
-  '' using 2:($40/1000):($42/1000) with errorbars title 'Gzip', \
-  '' using 2:($60/1000):($62/1000) with errorbars title 'Deflate', \
-  '' using 2:($80/1000):($82/1000) with errorbars title 'No compression'
+plot filename using 2:(column("brotliTotalGetValueMean")/1000):(column("brotliTotalGetValue95")/1000) with errorbars title 'Brotli', \
+  '' using 2:(column("gzipTotalGetValueMean")/1000):(column("gzipTotalGetValue95")/1000) with errorbars title 'Gzip', \
+  '' using 2:(column("deflateTotalGetValueMean")/1000):(column("deflateTotalGetValue95")/1000) with errorbars title 'Deflate', \
+  '' using 2:(column("noneTotalGetValueMean")/1000):(column("noneTotalGetValue95")/1000) with errorbars title 'No compression'
 
 # Compression
 
@@ -46,9 +46,9 @@ set ylabel "Space saving"
 set format y "%g%%"
 set yrange [*:*]
 set ytics 1
-plot filename using 2:4 with points title 'Brotli', \
-  '' using 2:24 with points title 'Gzip', \
-  '' using 2:44 with points title 'Deflate', \
+plot filename using 2:"brotliSizeSaving" with points title 'Brotli', \
+  '' using 2:"gzipSizeSaving" with points title 'Gzip', \
+  '' using 2:"deflateSizeSaving" with points title 'Deflate', \
 
   
 if (exists("write")){
@@ -60,6 +60,6 @@ set ylabel "Duration"
 set format y "%.0s%cs"
 set yrange [0:*]
 set ytics auto
-plot filename using 2:($5/1000):($7/1000) with errorbars title 'Brotli', \
-  '' using 2:($25/1000):($27/1000) with errorbars title 'Gzip', \
-  '' using 2:($45/1000):($47/1000) with errorbars title 'Deflate', \
+plot filename using 2:(column("brotliCompressionMean")/1000):(column("brotliCompression95")/1000) with errorbars title 'Brotli', \
+  '' using 2:(column("gzipCompressionMean")/1000):(column("gzipCompression95")/1000) with errorbars title 'Gzip', \
+  '' using 2:(column("deflateCompressionMean")/1000):(column("deflateCompression95")/1000) with errorbars title 'Deflate', \
