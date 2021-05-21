@@ -6,6 +6,7 @@ import { IOptions } from "./options.interface";
 import { Benchmark } from "./benchmark";
 import { createClient } from "redis";
 import { write } from "./writer";
+import { StrategiesGenerator } from "./strategies-generator";
 
 const program = new Command();
 
@@ -54,8 +55,13 @@ program
         return_buffers: false,
       });
 
+      const strategiesCreator = new StrategiesGenerator(
+        redisClientBuffer,
+        redisClientString
+      );
+
       try {
-        const benchmark = new Benchmark(redisClientBuffer, redisClientString);
+        const benchmark = new Benchmark(redisClientString, strategiesCreator);
 
         const results = await benchmark.run(options);
         await write(results, options);

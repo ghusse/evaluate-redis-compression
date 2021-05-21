@@ -1,20 +1,13 @@
-export enum Compression {
-  brotli = "brotli",
-  gzip = "gzip",
-  deflate = "deflate",
-  none = "none",
-}
+import { BenchmarkMeasure } from "./measures.interface";
+import { Strategy } from "./strategies/strategy.interface";
 
 export interface IRawBenchmarkResult {
   key: string;
   rawDocumentSize: number;
-  compression: Compression;
+  strategy: Strategy;
   documentSizeWithCompression: number;
   dataSavingPercentage: number;
-  uploadTimeMs: number;
-  downloadTimeMs: number;
-  compressionTimeMs: number;
-  decompressionTimeMs: number;
+  measures: BenchmarkMeasure<number>;
 }
 
 export interface IAggregatedResult {
@@ -23,22 +16,16 @@ export interface IAggregatedResult {
   confidence95: number;
 }
 
-export interface IBenchmarkResultForCompression {
+export interface IBenchmarkResultForStrategy {
+  strategy: Strategy;
   documentSizeWithCompression: number;
   dataSavingPercentage: number;
-  uploadTimeMs: IAggregatedResult;
-  downloadTimeMs: IAggregatedResult;
-  compressionTimeMs: IAggregatedResult;
-  decompressionTimeMs: IAggregatedResult;
-  totalSetValueTimeMs: IAggregatedResult;
-  totalGetValueTimeMs: IAggregatedResult;
+  measures: BenchmarkMeasure<IAggregatedResult>;
 }
 
 export interface IBenchmarkResult {
   key: string;
   rawDocumentSize: number;
-  [Compression.brotli]: IBenchmarkResultForCompression;
-  [Compression.none]: IBenchmarkResultForCompression;
-  [Compression.gzip]: IBenchmarkResultForCompression;
-  [Compression.deflate]: IBenchmarkResultForCompression;
+
+  results: IBenchmarkResultForStrategy[];
 }

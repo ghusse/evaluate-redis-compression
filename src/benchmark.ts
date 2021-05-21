@@ -2,72 +2,25 @@ import { IOptions } from "./options.interface";
 import { RedisClient } from "redis";
 import { promisify } from "util";
 import {
-  Compression,
   IAggregatedResult,
   IBenchmarkResult,
-  IBenchmarkResultForCompression,
+  IBenchmarkResultForStrategy,
   IRawBenchmarkResult,
 } from "./benchmark-result.interface";
-import { measure } from "./measure";
-import {
-  brotliCompress,
-  brotliDecompress,
-  deflate,
-  gunzip,
-  gzip,
-  inflate,
-  constants,
-} from "zlib";
+
 import { shuffle } from "./shuffle";
-
-const internalBrotliCompressAsync = promisify(brotliCompress);
-const deflateAsync = promisify(deflate);
-const gzipAsync = promisify(gzip);
-const brotliDecompressAsync = promisify(brotliDecompress);
-const inflateAsync = promisify(inflate);
-const gunzipAsync = promisify(gunzip);
-
-function brotliCompressAsync(value: string): Promise<Buffer> {
-  return internalBrotliCompressAsync(value, {
-    params: {
-      // The default quality is the max quality, which is not fair for this algorithm
-      [constants.BROTLI_PARAM_QUALITY]: 5,
-    },
-  });
-}
+import { StrategiesGenerator } from "./strategies-generator";
+import { Strategy } from "./strategies/strategy.interface";
+import assert from "assert";
+import { Measures, BenchmarkMeasure } from "./measures.interface";
 
 const REDIS_KEY = "evaluate-redis-compression";
 const EXPIRY_MS = 60_000;
 
-function getCompressAsync(
-  compression: Compression
-): (value: string) => Promise<Buffer> {
-  switch (compression) {
-    case Compression.brotli:
-      return brotliCompressAsync;
-    case Compression.deflate:
-      return deflateAsync;
-    case Compression.gzip:
-      return gzipAsync;
-    default:
-      throw new Error(`Unknow compression ${compression}`);
-  }
-}
-
-function getDecompressAsync(
-  compression: Compression
-): (value: Buffer) => Promise<Buffer> {
-  switch (compression) {
-    case Compression.brotli:
-      return brotliDecompressAsync;
-    case Compression.deflate:
-      return inflateAsync;
-    case Compression.gzip:
-      return gunzipAsync;
-    default:
-      throw new Error(`Unknown compression ${compression}`);
-  }
-}
+type JsonDocument = {
+  document: Record<string, unknown>;
+  size: number;
+};
 
 function aggregate(values: number[]): IAggregatedResult {
   if (!values.length) {
@@ -92,71 +45,55 @@ function aggregate(values: number[]): IAggregatedResult {
   };
 }
 
-function aggregateForCompression(
+function aggregateForStrategy(
+  strategy: Strategy,
   results: IRawBenchmarkResult[]
-): IBenchmarkResultForCompression {
+): IBenchmarkResultForStrategy {
   return {
+    strategy,
     dataSavingPercentage: results[0].dataSavingPercentage,
     documentSizeWithCompression: results[0].documentSizeWithCompression,
-    downloadTimeMs: aggregate(results.map((result) => result.downloadTimeMs)),
-    uploadTimeMs: aggregate(results.map((result) => result.uploadTimeMs)),
-    compressionTimeMs: aggregate(
-      results.map((result) => result.compressionTimeMs)
-    ),
-    decompressionTimeMs: aggregate(
-      results.map((result) => result.decompressionTimeMs)
-    ),
-    totalSetValueTimeMs: aggregate(
-      results.map((result) => result.uploadTimeMs + result.compressionTimeMs)
-    ),
-    totalGetValueTimeMs: aggregate(
-      results.map(
-        (result) => result.downloadTimeMs + result.decompressionTimeMs
-      )
-    ),
+    measures: Object.values(Measures).reduce(
+      (allMeasures, measureKey) => ({
+        ...allMeasures,
+        [measureKey]: aggregate(
+          results.map((result) => result.measures[measureKey] as number)
+        ),
+      }),
+      {}
+    ) as BenchmarkMeasure<IAggregatedResult>,
   };
 }
 
-function aggregateResults(results: IRawBenchmarkResult[]): IBenchmarkResult {
+function aggregateResults(
+  strategies: Strategy[],
+  results: IRawBenchmarkResult[]
+): IBenchmarkResult {
   return {
     key: results[0].key,
     rawDocumentSize: results[0].rawDocumentSize,
-    [Compression.brotli]: aggregateForCompression(
-      results.filter((result) => result.compression === Compression.brotli)
-    ),
-    [Compression.gzip]: aggregateForCompression(
-      results.filter((result) => result.compression === Compression.gzip)
-    ),
-    [Compression.deflate]: aggregateForCompression(
-      results.filter((result) => result.compression === Compression.deflate)
-    ),
-    [Compression.none]: aggregateForCompression(
-      results.filter((result) => result.compression === Compression.none)
+    results: strategies.map((strategy) =>
+      aggregateForStrategy(
+        strategy,
+        results.filter((result) => result.strategy === strategy)
+      )
     ),
   };
 }
 
 export class Benchmark {
   private readonly redisStringKeyAsync: (pattern: string) => Promise<string[]>;
+
   private readonly redisStringGetAsync: (key: string) => Promise<string | null>;
-  private readonly redisBufferGetAsync: (key: string) => Promise<Buffer | null>;
-  private readonly redisStringSetAsync: (
-    key: string,
-    value: string,
-    mode: string,
-    duration: number
-  ) => Promise<unknown>;
-  private readonly redisBufferSetAsync: (
-    key: string,
-    value: Buffer,
-    mode: string,
-    duration: number
-  ) => Promise<unknown>;
-  private readonly rawContentCache = new Map<string, string>();
+
+  private readonly rawContentCache = new Map<
+    string,
+    { document: Record<string, unknown>; size: number }
+  >();
 
   constructor(
-    private readonly redisClientBuffer: RedisClient,
-    private readonly redisClientString: RedisClient
+    private readonly redisClientString: RedisClient,
+    private readonly strategiesGenerator: StrategiesGenerator
   ) {
     this.redisStringKeyAsync = promisify(this.redisClientString.keys).bind(
       this.redisClientString
@@ -164,28 +101,25 @@ export class Benchmark {
     this.redisStringGetAsync = promisify(this.redisClientString.get).bind(
       this.redisClientString
     );
-    this.redisStringSetAsync = promisify(this.redisClientString.set).bind(
-      this.redisClientString
-    );
-    this.redisBufferSetAsync = promisify(this.redisClientBuffer.set).bind(
-      this.redisClientString
-    ) as never;
-    this.redisBufferGetAsync = promisify(this.redisClientBuffer.get).bind(
-      this.redisClientBuffer
-    ) as never;
   }
 
   async run(options: IOptions): Promise<IBenchmarkResult[]> {
-    const { results, keys } = await this.measure(options);
+    const strategies = this.strategiesGenerator.generateStrategies();
+
+    const { results, keys } = await this.measure(strategies, options);
 
     const aggregatedResults = keys.map((key) =>
-      aggregateResults(results.filter((result) => result.key === key))
+      aggregateResults(
+        strategies,
+        results.filter((result) => result.key === key)
+      )
     );
 
     return aggregatedResults;
   }
 
   private async measure(
+    strategies: Strategy[],
     options: IOptions
   ): Promise<{ results: IRawBenchmarkResult[]; keys: string[] }> {
     const allKeys = await this.redisStringKeyAsync(options.redisKeyPattern);
@@ -202,33 +136,32 @@ export class Benchmark {
       `Running ${options.runs} runs on ${selectedKeys.length} keys and all algorithm`
     );
 
-    const runDefinitions: Array<{ compression: Compression; key: string }> =
-      shuffle(
-        selectedKeys
-          .map((key) =>
-            Object.values(Compression)
-              .map((compression) =>
-                runs.map(() => ({
-                  compression,
-                  key,
-                }))
-              )
-              .flat()
-          )
-          .flat()
-          .map(({ compression, key }) => ({ compression, key }))
-      );
+    const runDefinitions: Array<{ strategy: Strategy; key: string }> = shuffle(
+      selectedKeys
+        .map((key) =>
+          strategies
+            .map((strategy) =>
+              runs.map(() => ({
+                strategy,
+                key,
+              }))
+            )
+            .flat()
+        )
+        .flat()
+        .map(({ strategy, key }) => ({ strategy, key }))
+    );
 
     for (let i = 0; i < runDefinitions.length; i++) {
       console.info(`Running measure ${i + 1}/${runDefinitions.length}`);
 
       const definition = runDefinitions[i];
-      const rawContent = await this.getRawContent(definition.key);
+      const jsonDocument = await this.getJsonDocument(definition.key);
 
-      const result = await this.runForKeyAndCompression(
+      const result = await this.runForKeyAndStrategy(
         definition.key,
-        definition.compression,
-        rawContent
+        definition.strategy,
+        jsonDocument
       );
       benchMarks.push(result);
     }
@@ -236,7 +169,7 @@ export class Benchmark {
     return { results: benchMarks, keys: selectedKeys };
   }
 
-  private async getRawContent(key: string): Promise<string> {
+  private async getJsonDocument(key: string): Promise<JsonDocument> {
     if (this.rawContentCache.has(key)) {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return this.rawContentCache.get(key)!;
@@ -248,112 +181,52 @@ export class Benchmark {
       throw new Error(`Key not found ${key}`);
     }
 
-    this.rawContentCache.set(key, rawResult);
+    const document = JSON.parse(rawResult) as Record<string, unknown>;
+    const entry = { document, size: Buffer.from(rawResult, "utf-8").length };
 
-    return rawResult;
+    this.rawContentCache.set(key, entry);
+
+    return entry;
   }
-  private async runForKeyAndCompression(
+
+  private async runForKeyAndStrategy(
     key: string,
-    compression: Compression,
-    rawContent: string
+    strategy: Strategy,
+    json: JsonDocument
   ): Promise<IRawBenchmarkResult> {
-    const rawDocumentSize = Buffer.from(rawContent).length;
-    const { uploadTimeMs, documentSize, compressionTimeMs } =
-      await this.setValue(rawContent, compression);
+    // const rawDocumentSize = Buffer.from(rawContent).length;
+    const setResult = await strategy.setValue(
+      REDIS_KEY,
+      json.document,
+      EXPIRY_MS
+    );
 
-    const { downloadTimeMs, extractedDocument, decompressionTimeMs } =
-      await this.getValue(compression);
+    const getResult = await strategy.getValue(REDIS_KEY);
 
-    if (extractedDocument !== rawContent) {
-      throw new Error(
-        `Documents are not identical: ${key}, compression: ${compression}`
-      );
-    }
+    assert.deepStrictEqual(
+      getResult.extractedDocument,
+      json.document,
+      `Documents are not identical for key ${key} and strategy ${strategy.name}`
+    );
 
     return {
       key,
-      rawDocumentSize,
-      documentSizeWithCompression: documentSize,
-      compression,
-      uploadTimeMs,
-      downloadTimeMs,
-      compressionTimeMs,
-      decompressionTimeMs,
-      dataSavingPercentage: 100 * (1 - documentSize / rawDocumentSize),
+      strategy,
+      rawDocumentSize: json.size,
+      documentSizeWithCompression: setResult.documentSize,
+      dataSavingPercentage: 100 * (1 - setResult.documentSize / json.size),
+      measures: {
+        ...getResult.measures,
+        ...setResult.measures,
+        totalGetValueMs:
+          getResult.measures[Measures.downloadTimeMs] +
+          getResult.measures[Measures.decompressionTimeMs] +
+          getResult.measures[Measures.deserializationTimeMs],
+        totalSetValueMs:
+          setResult.measures[Measures.serializationTimeMs] +
+          setResult.measures[Measures.compressionTimeMs] +
+          setResult.measures[Measures.uploadTimeMs],
+      },
     };
-  }
-
-  private async setValue(
-    rawContent: string,
-    compression: Compression
-  ): Promise<{
-    uploadTimeMs: number;
-    documentSize: number;
-    compressionTimeMs: number;
-  }> {
-    if (compression === Compression.none) {
-      return this.setRawValue(rawContent);
-    }
-    const compressAsync = getCompressAsync(compression);
-
-    const [compressed, compressionTimeMs] = await measure(async () => {
-      return await compressAsync(rawContent);
-    });
-
-    const [, uploadTimeMs] = await measure(async () => {
-      await this.redisBufferSetAsync(REDIS_KEY, compressed, "PX", EXPIRY_MS);
-    });
-
-    return { uploadTimeMs, documentSize: compressed.length, compressionTimeMs };
-  }
-
-  private async setRawValue(rawContent: string): Promise<{
-    uploadTimeMs: number;
-    documentSize: number;
-    compressionTimeMs: number;
-  }> {
-    const documentSize = Buffer.from(rawContent, "utf-8").length;
-
-    const [, uploadTimeMs] = await measure(async () => {
-      await this.redisStringSetAsync(REDIS_KEY, rawContent, "PX", EXPIRY_MS);
-    });
-    return { uploadTimeMs, documentSize, compressionTimeMs: 0 };
-  }
-
-  private async getValue(compression: Compression): Promise<{
-    downloadTimeMs: number;
-    extractedDocument: string | null;
-    decompressionTimeMs: number;
-  }> {
-    if (compression === Compression.none) {
-      return this.getRawValue();
-    }
-    const decompressAsync = getDecompressAsync(compression);
-
-    const [compressed, decompressionTimeMs] = await measure(async () => {
-      return this.redisBufferGetAsync(REDIS_KEY);
-    });
-
-    const [extractedDocument, downloadTimeMs] = await measure(async () => {
-      const extractedDocument = compressed
-        ? (await decompressAsync(compressed)).toString("utf-8")
-        : null;
-
-      return extractedDocument;
-    });
-
-    return { extractedDocument, downloadTimeMs, decompressionTimeMs };
-  }
-
-  private async getRawValue(): Promise<{
-    downloadTimeMs: number;
-    extractedDocument: string | null;
-    decompressionTimeMs: number;
-  }> {
-    const [extractedDocument, downloadTimeMs] = await measure(async () => {
-      return this.redisStringGetAsync(REDIS_KEY);
-    });
-
-    return { downloadTimeMs, extractedDocument, decompressionTimeMs: 0 };
   }
 }
