@@ -18,9 +18,9 @@ export interface IAggregatedResult {
 
 export interface IBenchmarkResultForStrategy {
   strategy: Strategy;
-  documentSizeWithCompression: number;
-  dataSavingPercentage: number;
-  measures: BenchmarkMeasure<IAggregatedResult>;
+  documentSizeWithCompression?: number;
+  dataSavingPercentage?: number;
+  measures?: BenchmarkMeasure<IAggregatedResult>;
 }
 
 export interface IBenchmarkResult {

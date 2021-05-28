@@ -49,6 +49,10 @@ function aggregateForStrategy(
   strategy: Strategy,
   results: IRawBenchmarkResult[]
 ): IBenchmarkResultForStrategy {
+  if (!results.length) {
+    return { strategy };
+  }
+
   return {
     strategy,
     dataSavingPercentage: results[0].dataSavingPercentage,

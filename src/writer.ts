@@ -21,22 +21,26 @@ export async function write(
   options: IOptions
 ): Promise<void> {
   const lines = benchmarks.map((benchmark) => {
-    const compressionResults: Record<string, number> = Object.values(
+    const compressionResults: Record<string, number | string> = Object.values(
       benchmark.results
     )
       .map((benchmark) => ({
         [`${benchmark.strategy.name}DocSize`]:
-          benchmark.documentSizeWithCompression,
+          benchmark.documentSizeWithCompression || "",
         [`${benchmark.strategy.name}SizeSaving`]:
-          benchmark.dataSavingPercentage,
+          benchmark.dataSavingPercentage || "",
         ...Object.values(Measures)
           .map((measure) => ({
             [`${benchmark.strategy.name}${upperFirst(measure)}Mean`]:
-              benchmark.measures[measure].mean,
+              benchmark.measures ? benchmark.measures[measure].mean : "",
             [`${benchmark.strategy.name}${upperFirst(measure)}Std`]:
-              benchmark.measures[measure].standardDeviation,
+              benchmark.measures
+                ? benchmark.measures[measure].standardDeviation
+                : "",
             [`${benchmark.strategy.name}${upperFirst(measure)}95`]:
-              benchmark.measures[measure].confidence95,
+              benchmark.measures
+                ? benchmark.measures[measure].confidence95
+                : "",
           }))
           .reduce((agg, measures) => ({ ...agg, ...measures })),
       }))
