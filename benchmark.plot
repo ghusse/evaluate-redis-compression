@@ -101,6 +101,27 @@ plot filename using 2:(column("brotli5TotalSetValueMsMean")/1000):(column("brotl
   '' using 2:(column("msgPackTotalSetValueMsMean")/1000):(column("msgPackTotalSetValueMs95")/1000) with errorbars title 'msgpack', \
   '' using 2:(column("noneTotalSetValueMsMean")/1000):(column("noneTotalSetValueMs95")/1000) with errorbars title 'none'
 
+if (exists("write")){
+  set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
+  set output 'upload-challengers.png'
+}
+
+plot filename using 2:(column("brotli5TotalSetValueMsMean")/1000):(column("brotli5TotalSetValueMs95")/1000) with errorbars title 'brotli 5', \
+  '' using 2:(column("deflate6TotalSetValueMsMean")/1000):(column("deflate6TotalSetValueMs95")/1000) with errorbars title 'deflate 6', \
+  '' using 2:(column("gzip6TotalSetValueMsMean")/1000):(column("gzip6TotalSetValueMs95")/1000) with errorbars title 'gzip 6', \
+  '' using 2:(column("noneTotalSetValueMsMean")/1000):(column("noneTotalSetValueMs95")/1000) with errorbars title 'none'
+
+set title "Compression duration"
+
+if (exists("write")){
+  set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
+  set output 'compression-time.png'
+}
+
+plot filename using 2:(column("brotli5CompressionTimeMsMean")/1000):(column("brotli5CompressionTimeMs95")/1000) with errorbars title 'brotli 5', \
+  '' using 2:(column("deflate6CompressionTimeMsMean")/1000):(column("deflate6CompressionTimeMs95")/1000) with errorbars title 'deflate 6', \
+  '' using 2:(column("gzip6CompressionTimeMsMean")/1000):(column("gzip6CompressionTimeMs95")/1000) with errorbars title 'gzip 6'
+
 
 # DOWNLOAD
 
@@ -170,21 +191,43 @@ plot filename using 2:(column("brotli5TotalGetValueMsMean")/1000):(column("brotl
   '' using 2:(column("msgPackTotalGetValueMsMean")/1000):(column("msgPackTotalGetValueMs95")/1000) with errorbars title 'msgpack', \
   '' using 2:(column("noneTotalGetValueMsMean")/1000):(column("noneTotalGetValueMs95")/1000) with errorbars title 'none'
 
+if (exists("write")){
+  set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
+  set output 'download-challengers.png'
+}
+
+plot filename using 2:(column("brotli5TotalGetValueMsMean")/1000):(column("brotli5TotalGetValueMs95")/1000) with errorbars title 'brotli 5', \
+  '' using 2:(column("deflate6TotalGetValueMsMean")/1000):(column("deflate6TotalGetValueMs95")/1000) with errorbars title 'deflate 6', \
+  '' using 2:(column("gzip6TotalGetValueMsMean")/1000):(column("gzip6TotalGetValueMs95")/1000) with errorbars title 'gzip 6', \
+  '' using 2:(column("noneTotalGetValueMsMean")/1000):(column("noneTotalGetValueMs95")/1000) with errorbars title 'none'
+
+set title "Decompression duration"
+
+if (exists("write")){
+  set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
+  set output 'decompression-time.png'
+}
+
+plot filename using 2:(column("brotli5DecompressionTimeMsMean")/1000):(column("brotli5DecompressionTimeMs95")/1000) with errorbars title 'brotli 5', \
+  '' using 2:(column("deflate6DecompressionTimeMsMean")/1000):(column("deflate6DecompressionTimeMs95")/1000) with errorbars title 'deflate 6', \
+  '' using 2:(column("gzip6DecompressionTimeMsMean")/1000):(column("gzip6DecompressionTimeMs95")/1000) with errorbars title 'gzip 6'
+
+
 
 # Compression
 
-# if (exists("write")){
-#   set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
-#   set output 'space-saving.png'
-# }
-# set title "Space saving"
-# set ylabel "Space saving"
-# set format y "%g%%"
-# set yrange [*:*]
-# set ytics 1
-# plot filename using 2:"brotliSizeSaving" with points title 'Brotli', \
-#   '' using 2:"gzipSizeSaving" with points title 'Gzip', \
-#   '' using 2:"deflateSizeSaving" with points title 'Deflate', \
+if (exists("write")){
+  set terminal pngcairo size 660,440 enhanced font 'Verdana,10'
+  set output 'space-saving.png'
+}
+set title "Space saving"
+set ylabel "Space saving"
+set format y "%g%%"
+set yrange [*:*]
+set ytics 1
+plot filename using 2:"brotli5SizeSaving" with points title 'brotli 5', \
+  '' using 2:"gzip6SizeSaving" with points title 'gzip 6', \
+  '' using 2:"deflate6SizeSaving" with points title 'deflate 6', \
 
   
 # if (exists("write")){
