@@ -28,7 +28,6 @@
     "@types/redis": "^2.8.28",
     "commander": "^7.2.0",
     "csv-stringify": "^5.6.2",
-    "msgpack": "^1.0.3",
     "redis": "^3.0.0",
     "ts-node": "^9.1.1",
     "typescript": "^4.2.4"
@@ -40,5 +39,8 @@
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^3.4.0",
     "prettier": "^2.3.0"
+  },
+  "optionalDependencies": {
+    "msgpack": "^1.0.3"
   }
 }

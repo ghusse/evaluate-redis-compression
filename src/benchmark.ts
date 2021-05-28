@@ -124,7 +124,7 @@ export class Benchmark {
   ): Promise<{ results: IRawBenchmarkResult[]; keys: string[] }> {
     const allKeys = await this.redisStringKeyAsync(options.redisKeyPattern);
 
-    const benchMarks = [];
+    const benchMarks: IRawBenchmarkResult[] = [];
 
     const runs = new Array(options.runs).fill(undefined);
 
@@ -163,7 +163,10 @@ export class Benchmark {
         definition.strategy,
         jsonDocument
       );
-      benchMarks.push(result);
+
+      if (result) {
+        benchMarks.push(result);
+      }
     }
 
     return { results: benchMarks, keys: selectedKeys };
@@ -193,7 +196,7 @@ export class Benchmark {
     key: string,
     strategy: Strategy,
     json: JsonDocument
-  ): Promise<IRawBenchmarkResult> {
+  ): Promise<IRawBenchmarkResult | undefined> {
     // const rawDocumentSize = Buffer.from(rawContent).length;
     const setResult = await strategy.setValue(
       REDIS_KEY,
@@ -202,6 +205,10 @@ export class Benchmark {
     );
 
     const getResult = await strategy.getValue(REDIS_KEY);
+
+    if (!getResult || !setResult) {
+      return undefined;
+    }
 
     assert.deepStrictEqual(
       getResult.extractedDocument,

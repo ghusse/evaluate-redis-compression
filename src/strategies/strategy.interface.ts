@@ -17,6 +17,6 @@ export interface Strategy {
     key: string,
     jsonObject: Record<string, unknown>,
     expiryMs: number
-  ): Promise<StrategySetResult>;
-  getValue(key: string): Promise<StrategyGetResult>;
+  ): Promise<StrategySetResult | undefined>;
+  getValue(key: string): Promise<StrategyGetResult | undefined>;
 }

@@ -1,4 +1,3 @@
-import msgpack from "msgpack";
 import { measure, measureSync } from "../measure";
 import { RedisGetBuffer, RedisSetBuffer } from "../redis.interface";
 
@@ -10,21 +9,32 @@ import {
 
 export class MsgPack implements Strategy {
   readonly name: string;
+  readonly msgpack;
 
   constructor(
     private readonly redisGetBuffer: RedisGetBuffer,
     private readonly redisSetBuffer: RedisSetBuffer
   ) {
     this.name = "msgPack";
+
+    try {
+      this.msgpack = require("msgpack");
+    } catch (e) {
+      // msgpack not installed
+    }
   }
 
   async setValue(
     key: string,
     jsonObject: Record<string, unknown>,
     expiryMs: number
-  ): Promise<StrategySetResult> {
+  ): Promise<StrategySetResult | undefined> {
+    if (!this.msgpack) {
+      return undefined;
+    }
+
     const [packed, serializationTimeMs] = await measureSync(
-      () => msgpack.pack(jsonObject) as Buffer | false
+      () => this.msgpack.pack(jsonObject) as Buffer | false
     );
 
     if (!packed) {
@@ -45,7 +55,11 @@ export class MsgPack implements Strategy {
     };
   }
 
-  async getValue(key: string): Promise<StrategyGetResult> {
+  async getValue(key: string): Promise<StrategyGetResult | undefined> {
+    if (!this.msgpack) {
+      return undefined;
+    }
+
     const [packed, downloadTimeMs] = await measure(async () =>
       this.redisGetBuffer(key)
     );
@@ -55,7 +69,7 @@ export class MsgPack implements Strategy {
     }
 
     const [extractedDocument, deserializationTimeMs] = measureSync(() =>
-      msgpack.unpack(packed)
+      this.msgpack.unpack(packed)
     );
 
     return {
