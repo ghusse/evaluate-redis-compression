@@ -62,6 +62,7 @@ if (exists("write")){
 }
 
 plot filename using 2:(column("gzip-1TotalSetValueMsMean")/1000):(column("gzip-1TotalSetValueMs95")/1000) with errorbars title 'gzip -1', \
+  '' using 2:(column("gzip0TotalSetValueMsMean")/1000):(column("gzip0TotalSetValueMs95")/1000) with errorbars title 'gzip 0', \
   '' using 2:(column("gzip1TotalSetValueMsMean")/1000):(column("gzip1TotalSetValueMs95")/1000) with errorbars title 'gzip 1', \
   '' using 2:(column("gzip2TotalSetValueMsMean")/1000):(column("gzip2TotalSetValueMs95")/1000) with errorbars title 'gzip 2', \
   '' using 2:(column("gzip3TotalSetValueMsMean")/1000):(column("gzip3TotalSetValueMs95")/1000) with errorbars title 'gzip 3', \
@@ -79,6 +80,7 @@ if (exists("write")){
 }
 
 plot filename using 2:(column("deflate-1TotalSetValueMsMean")/1000):(column("deflate-1TotalSetValueMs95")/1000) with errorbars title 'deflate -1', \
+  '' using 2:(column("deflate0TotalSetValueMsMean")/1000):(column("deflate0TotalSetValueMs95")/1000) with errorbars title 'deflate 0', \
   '' using 2:(column("deflate1TotalSetValueMsMean")/1000):(column("deflate1TotalSetValueMs95")/1000) with errorbars title 'deflate 1', \
   '' using 2:(column("deflate2TotalSetValueMsMean")/1000):(column("deflate2TotalSetValueMs95")/1000) with errorbars title 'deflate 2', \
   '' using 2:(column("deflate3TotalSetValueMsMean")/1000):(column("deflate3TotalSetValueMs95")/1000) with errorbars title 'deflate 3', \
@@ -117,7 +119,8 @@ if (exists("write")){
 
 plot filename using 2:(column("brotli1TotalSetValueMsMean")/1000):(column("brotli1TotalSetValueMs95")/1000) with errorbars title 'brotli 1', \
   '' using 2:(column("deflate3TotalSetValueMsMean")/1000):(column("deflate3TotalSetValueMs95")/1000) with errorbars title 'deflate 3', \
-  '' using 2:(column("gzip3TotalSetValueMsMean")/1000):(column("gzip3TotalSetValueMs95")/1000) with errorbars title 'gzip 3'
+  '' using 2:(column("gzip3TotalSetValueMsMean")/1000):(column("gzip3TotalSetValueMs95")/1000) with errorbars title 'gzip 3', \
+  '' using 2:(column("noneTotalSetValueMsMean")/1000):(column("noneTotalSetValueMs95")/1000) with errorbars title 'none'
 
 set title "Compression duration"
 
@@ -233,7 +236,8 @@ if (exists("write")){
 
 plot filename using 2:(column("brotli1TotalGetValueMsMean")/1000):(column("brotli1TotalGetValueMs95")/1000) with errorbars title 'brotli 1', \
   '' using 2:(column("deflate3TotalGetValueMsMean")/1000):(column("deflate3TotalGetValueMs95")/1000) with errorbars title 'deflate 3', \
-  '' using 2:(column("gzip3TotalGetValueMsMean")/1000):(column("gzip3TotalGetValueMs95")/1000) with errorbars title 'gzip 3'
+  '' using 2:(column("gzip3TotalGetValueMsMean")/1000):(column("gzip3TotalGetValueMs95")/1000) with errorbars title 'gzip 3', \
+  '' using 2:(column("noneTotalGetValueMsMean")/1000):(column("noneTotalGetValueMs95")/1000) with errorbars title 'none'
 
 set title "Decompression duration"
 
